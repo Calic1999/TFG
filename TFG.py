@@ -1003,20 +1003,4 @@ def prediccio(perc,semi):
         prediccio(perc,semi)
 
 
-#prediccio(0.2,(1e7,1e8))
-
-t=np.array([2438314.7916667,2438314.8055556,2438314.8194444])
-alpha=np.array([153.6949*np.pi/12,186.7296*np.pi/12,202.9475*np.pi/12])
-delta = np.array([36.2726,24.8918,9.8723])
-
-phi = np.array([40,40,40])
-theta = np.array([250,250,250])
-H = np.array([0.78393e-3*6378136.6,0.78393e-3*6378136.6,0.78393e-3*6378136.6])
-
-r,v = Gauss(t,alpha,delta,phi,theta,H)
-obs = RA_dec(r[0],r[1],r[2])
-real = RA_dec(-1.22192*6378136.6,3.52894e-2*6378136.6,1.54752*6378136.6)
-r=r/6378136.6
-v=v/6378136.6
-
-print(obs,real)
+prediccio(0.2,(1e7,1e8))
