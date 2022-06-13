@@ -3,6 +3,7 @@ from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import random as rnd
+import csv
 
 def ElementsKeplerians(r,v):
     '''
@@ -69,8 +70,7 @@ def ElementsCartesians(a,e,i,O,w,nu):
     vel : Array de les coordenades cartesianes velocitat en metres per segon
         
     !!! COMPTE !!!
-    No estan protegides condicions com i=0 on certes magnituds no estan
-    ben definides i el programa pot fallar.
+    No estan protegides condicions d'òrbita oberta e=1
     '''
     i = i*math.pi/180
     # No sé el perquè dels 180 de dif. però és així
@@ -81,7 +81,10 @@ def ElementsCartesians(a,e,i,O,w,nu):
     nu = nu*math.pi/180
     mu = 3.986004418E14
     r = (a*(1 - e**2))/(1 + e*math.cos(nu))
-    E = math.acos((1 - r/a)/e)
+    if e==0:
+        E=nu
+    else:
+        E = math.acos((1 - r/a)/e)
     #posicio i velocitat en el pla orbital
     #z perpendicular a l'eix orbital
     #x apuntant al periàpside
@@ -762,13 +765,15 @@ def Laplace(t,alpha,delta,phi,lambda_E,H):
     #Resultat en metres:
     return r*6378136.6,r1*6378136.6
 
-def prediccio(perc,semi):
+def prediccio(a,perc):
     '''
     Parameters
     ----------
     perc : Percentatge de l'òrbita sobre el qual es faran observacions
-    semi : array de dos valors: mínim i màxim valors possibles
-            per la generació aleatòria del semieix major
+    semi : semieix major
+    ecc : exentricitat
+    apside : True -> Observacions prop del periapside
+             False -> Observacions prop de l'apoàpside
 
     '''
     #Funció que dibuixa l'òrbita en 3D
@@ -808,8 +813,7 @@ def prediccio(perc,semi):
         plt.show()
 
     #Generació aleatòria dels elements orbitals
-    a = rnd.uniform(semi[0],semi[1])
-    e = rnd.random()
+    e = 0
     inc = 360*rnd.random()
     O = 360*rnd.random()
     w = 360*rnd.random()
@@ -834,29 +838,22 @@ def prediccio(perc,semi):
     #s'havia inicialitzat l'òrbita amb la generació aleatòria dels vectors
     #posició i velocitat i així a vegades la trajectòria era d'impacte.
     if impacte==False:
-        #Dibuix de l'òrbita en 3D
-        plot(x,y,z)
+        # #Dibuix de l'òrbita en 3D
+        # plot(x,y,z)
         
         #Nombre de posicions corresponents al percentatge de l'òrbita
-        #sobre el qual es vulguin generar observacions aleatòries
+        #sobre el qual es vulguin generar observacions 
         seleccio = int(100001*perc)
         inici = int(rnd.uniform(0,(100001 - seleccio)))
         
-        #Selecció aleatòria de tres observacions
-        #Aleatòriament es generen els índexs que seriviran per extreure
+        #Selecció de tres observacions
+        #Es generen els índexs que seriviran per extreure
         #la posició de les arrays que representen la trajectòria
         #que ens proporciona la funció EulerSimple
-        i1 = int(rnd.uniform(inici,seleccio))
-        i2 = int(rnd.uniform(inici,seleccio))
-        i3 = int(rnd.uniform(inici,seleccio))
+        i1 = inici
+        i2 = inici + int(seleccio/2)
+        i3 = inici + seleccio 
         
-        #S'ordenen els índexs per saber quina és la primera i última observació
-        if i1 > i2:
-            i1,i2 = i2,i1
-        if i1 > i3:
-            i1,i3 = i3,i1
-        if i2 > i3:
-            i2,i3 = i3,i2
         
         #En quin moment es fan les observacions? (en segons)
         t1,t2,t3 = t[i1],t[i2],t[i3]
@@ -865,6 +862,7 @@ def prediccio(perc,semi):
         t_3 = t_inicial*86400 + t3
         t = np.array([t_1,t_2,t_3])
         
+
         #Posició de l'objecte en aquestes observacions?
         x1,x2,x3 = x[i1],x[i2],x[i3]
         y1,y2,y3 = y[i1],y[i2],y[i3]
@@ -874,11 +872,17 @@ def prediccio(perc,semi):
         r3 = ([x3,y3,z3])
         r_t = (r1,r2,r3)
         
+        #Càlcul de les coordenades angulars geocèntriques de l'objecte
+        RAi,deci = RA_dec(x2,y2,z2)
+        
         #Es generen aleatòriament tres llocs d'observació
         phi = np.empty((3))
         longitud = np.empty((3))
         theta = np.empty((3))
         H = np.empty((3))
+        xo = np.empty((3))
+        yo = np.empty((3))
+        zo = np.empty((3))
         for i in range(0,3):
             #Es comprova que l'objecte estigui a més de 10º d'altura
             h = 0.0
@@ -887,21 +891,22 @@ def prediccio(perc,semi):
                 longitud[i] = 360*rnd.random()
                 theta[i] = sideraltime(t[1],longitud[i],t[i])
                 H[i] = 4000*rnd.random()
-                xo,yo,zo = observador(phi[i],theta[i],H[i])
+                xo[i],yo[i],zo[i] = observador(phi[i],theta[i],H[i])
                 x_1,y_1,z_1 = r_t[i][0],r_t[i][1],r_t[i][2]
-                A,h = A_h(x_1,y_1,z_1,xo,yo,zo)
+                A,h = A_h(x_1,y_1,z_1,xo[i],yo[i],zo[i])
+        
         
         #Canvi de sistema de referència:
         #Posició de l'objecte de sistema geocèntric a topocèntric
-        x1 = x1 - xo
-        x2 = x2 - xo
-        x3 = x3 - xo
-        y1 = y1 - yo
-        y2 = y2 - yo
-        y3 = y3 - yo
-        z1 = z1 - zo
-        z2 = z2 - zo
-        z3 = z3 - zo
+        x1 = x1 - xo[0]
+        x2 = x2 - xo[1]
+        x3 = x3 - xo[2]
+        y1 = y1 - yo[0]
+        y2 = y2 - yo[1]
+        y3 = y3 - yo[2]
+        z1 = z1 - zo[0]
+        z2 = z2 - zo[1]
+        z3 = z3 - zo[2]
         
         #Càlcul de les coordenades angulars topocèntriques de l'objecte
         #en les tres observacions
@@ -912,6 +917,11 @@ def prediccio(perc,semi):
         alpha = np.array([RA1,RA2,RA3])
         delta = np.array([dec1,dec2,dec3])
         
+        #Arc d'observacio
+        terme1 = math.sin(dec1*math.pi/180)*math.sin(dec3*math.pi/180)
+        terme2 = math.cos(dec1*math.pi/180)*math.cos(dec3*math.pi/180)*math.cos(RA1*math.pi/12-RA3*math.pi/12)
+        arc = math.acos(terme1 + terme2)*180/math.pi
+        
         #Determinació de l'òrbita pel mètode de Gauss
         r_g,rpunt_g = Gauss(t,alpha,delta,phi,theta,H)
         ag,eg,ig,Og,wg,nug = ElementsKeplerians(r_g,rpunt_g)
@@ -920,27 +930,29 @@ def prediccio(perc,semi):
         r_l,rpunt_l = Laplace(t,alpha,delta,phi,theta,H)
         al,el,il,Ol,wl,nul = ElementsKeplerians(r_l,rpunt_l)
         
-        print('Òrbita real: ', a,e,inc,O,w,nu)
-        print('Òrbita Gauss: ', ag,eg,ig,Og,wg,nug)
-        print('Òrbita Laplace: ', al,el,il,Ol,wl,nul)
+        #Error relatiu en el vector posició de la data central
+        error_posicio_g = abs(np.dot((r_g-r2),(r_g-r2))/np.dot(r2,r2))
+        error_posicio_l = abs(np.dot((r_l-r2),(r_l-r2))/np.dot(r2,r2))
+        #Error angular en l'observació de la data central
+        RA2g,dec2g = RA_dec(r_g[0],r_g[1],r_g[2])
+        terme1 = math.sin(deci*math.pi/180)*math.sin(dec2g*math.pi/180)
+        terme2 = math.cos(deci*math.pi/180)*math.cos(dec2g*math.pi/180)*math.cos(RAi*math.pi/12-RA2g*math.pi/12)
+        error_angle_g = math.acos(terme1 + terme2)*180/math.pi
+        RA2l,dec2l = RA_dec(r_l[0],r_l[1],r_l[2])
+        terme1 = math.sin(deci*math.pi/180)*math.sin(dec2l*math.pi/180)
+        terme2 = math.cos(deci*math.pi/180)*math.cos(dec2l*math.pi/180)*math.cos(RAi*math.pi/12-RA2l*math.pi/12)
+        error_angle_l = math.acos(terme1 + terme2)*180/math.pi
         
-        print('Posició 2 real: ',r2)
-        print('Posició,v 2 Gauss: ',r_g,rpunt_g)
-        print('Posició,v 2 Laplace: ',r_l,rpunt_l)
+        writer.writerow([a,inc,O,w,nu,arc,error_posicio_g,error_posicio_l,error_angle_g,error_angle_l])
         
-        print("RA-dec 2 real: ",RA_dec(r2[0],r2[1],r2[2]))
-        print("RA-dec 2 Gauss: ",RA_dec(r_g[0],r_g[1],r_g[2]))
-        print("RA-dec 2 Laplace: ",RA_dec(r_l[0],r_l[1],r_l[2]))
 
-        #Càlcul de l'òrbita determinada durant un quart del període de
-        #l'òrbita original
+        #Càlcul de l'òrbita estimada
         r_gauss = np.array([r_g[0],r_g[1],r_g[2],rpunt_g[0],rpunt_g[1],rpunt_g[2]])
         r_laplace = np.array([r_l[0],r_l[1],r_l[2],rpunt_l[0],rpunt_l[1],rpunt_l[2]])
         xg,yg,zg,tg,impacteg = EulerSimple(r_gauss,periode)
         xl,yl,zl,tl,impactel = EulerSimple(r_laplace,periode)
         
 
-        
         #òrbites en coordenades celestes
         RA = ([])
         dec = ([])
@@ -961,46 +973,71 @@ def prediccio(perc,semi):
             RAl = np.append(RAl,RAli)
             decl = np.append(decl,decli)
         
-        #Dibuix en coord. celestes de l'òrbita real
-        plt.figure()
-        plt.style.use('default')
-        plt.scatter(RA,dec)
-        plt.ylabel('Declinació (º)')
-        plt.xlabel('Ascensió recta (h)')
-        plt.xlim([0,24])
+        # #Dibuix en coord. celestes de l'òrbita real
+        # plt.figure()
+        # plt.style.use('default')
+        # plt.scatter(RA,dec)
+        # plt.ylabel('Declination (º)')
+        # plt.xlabel('Right ascension (h)')
+        # plt.xlim([0,24])
         
         #Dibuix en coord. celestes de l'òrbita real i les calculades
         plt.figure()
         plt.style.use('default')
-        plt.scatter(RA,dec,label='Orb. real')
-        plt.ylabel('Declinació (º)')
-        plt.xlabel('Ascensió recta (h)')
+        plt.scatter(RA,dec,label='Real orbit')
+        plt.ylabel('Declination (º)')
+        plt.xlabel('Right ascension (h)')
         plt.xlim([0,24])
-        plt.scatter(RAg,decg,color='black',label='Orb. Gauss')
-        plt.scatter(RAl,decl,color='grey',label='Orb. Laplace')
-        plt.scatter(RAg[0],decg[0],color='yellow')
-        plt.scatter(RAl[0],decl[0],color='yellow',label="Inici d'orb. calculades")
+        plt.scatter(RAg[0],decg[0],color='orange',label="Gauss central date",s=20)
+        plt.scatter(RAl[0],decl[0],color='yellow',label="Laplace central date",s=25)
+        plt.scatter(RAg,decg,color='black',label='Gauss orbit',s=4)
+        plt.scatter(RAl,decl,color='brown',label='Laplace orbit',s=6)
+
             #Observacions
         RA1,dec1 = RA_dec(r_t[0][0],r_t[0][1],r_t[0][2])
         RA2,dec2 = RA_dec(r_t[1][0],r_t[1][1],r_t[1][2])
         RA3,dec3 = RA_dec(r_t[2][0],r_t[2][1],r_t[2][2])
-        plt.scatter(RA1,dec1,color='red',label='1a obs.')
-        plt.scatter(RA3,dec3,color='blue',label='3a obs.')
-        plt.scatter(RA2,dec2,color='green',label='2a obs.')
-        '''
-        #Predicció al cap de cert temps, només si he usat el mateix període
-        i4 = int(rnd.uniform(inici,seleccio) + 100001*perc*0.25)
-        if i4>100001:
-            i4 = i4-100001
-        plt.scatter(RA[i4],dec[i4],color='orange',lw=5)
-        plt.scatter(RAg[i4],decg[i4],color='pink',lw=3)
-        plt.scatter(RAl[i4],decl[i4],color='brown',lw=1)
-        '''
+        plt.scatter(RA1,dec1,color='red',label='1st obs.',s=10)
+        plt.scatter(RA2,dec2,color='green',label='2nd obs.',s=10)
+        plt.scatter(RA3,dec3,color='blue',label='3rd obs.',s=10)
+        
+        
+        # #Predicció al cap de cert temps, només si he usat el mateix període
+        # i4 = int(rnd.uniform(inici,seleccio) + 100001*perc*0.25)
+        # if i4>100001:
+        #     i4 = i4-100001
+        # plt.scatter(RA[i4],dec[i4],color='orange',lw=5)
+        # plt.scatter(RAg[i4],decg[i4],color='pink',lw=3)
+        # plt.scatter(RAl[i4],decl[i4],color='brown',lw=1)
+        
         plt.legend()
+        
+        plt.savefig('plots/test-{0}.pdf'.format(index))
+        plt.savefig('plots/test-{0}.jpg'.format(index))
         
         
     else:
-        prediccio(perc,semi)
+        prediccio(a,perc)
 
+file = open('r2_test.csv', 'w', newline='')
+writer = csv.writer(file)
+writer.writerow(["a","inc","O","w","nu","arc","error_posicio_g","error_posicio_l","error_angle_g","error_angle_l"])
+index=0
+for semieix in range(0,6):
+    if semieix==0:
+        a=1
+    elif semieix==1:
+        a=5
+    elif semieix==2:
+        a=10
+    elif semieix==3:
+        a=50
+    elif semieix==4:
+        a=100
+    elif semieix==5:
+        a=500
+    for perc in range(1,11):
+        prediccio(1e7*a,perc*0.05)
+        index += 1
+file.close()
 
-prediccio(0.2,(1e7,1e8))
